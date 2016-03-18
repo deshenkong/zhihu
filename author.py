@@ -6,6 +6,8 @@ from datetime import datetime
 from requests import Session
 from bs4 import BeautifulSoup
 from requests.packages.urllib3.util import Retry
+import pdfcrowd
+import os
 
 ZH_url = 'https://www.zhihu.com'
 
@@ -38,7 +40,19 @@ def class_common_init(url_re, allowed_none=True, trailing_slash=True):
         return wrapper
     return real
 
+#用的是pdfcrowd试用版，一个月只有100次权限,so...
+def htmltopdf(html,pdfname):
+        try:
+            # create an API client instance
+            #client = pdfcrowd.Client("deshenkong", "30658dd7b6000c089b4c42fe47233f2b")
+            name = os.path.join('d:\\','PythonCode',pdfname)
+            with open(name, 'wb') as output_file:
+                print(name)
+                # convert a web page and store the generated PDF into a pdf variable
+                #pdf = client.convertURI(html,output_file)
 
+        except pdfcrowd.Error:
+            print('Failed: {}')
 
 
 class BaseZhihu:
@@ -147,10 +161,6 @@ class Author(BaseZhihu):
 
 
 
-
-
-
-
 """
 个人页面过于麻烦，如何抽象？-->先整页面解析，再分层解析
 1.基本信息
@@ -163,4 +173,5 @@ if __name__ == '__main__':
     author = Author(url)
     author.get_info()
     author.get_answers(1)
+
 
