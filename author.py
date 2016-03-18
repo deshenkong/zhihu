@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 import functools
 import re
@@ -8,6 +9,10 @@ from bs4 import BeautifulSoup
 from requests.packages.urllib3.util import Retry
 import pdfcrowd
 import os
+
+import time
+import sys
+import pickle
 
 ZH_url = 'https://www.zhihu.com'
 
@@ -70,21 +75,31 @@ class BaseZhihu:
         # refresh self.soup's content
         self._gen_soup(self._get_content())
 
+#TODO:这个全局变量的设计极其糟糕
+answers_dict = {} #存放url:content
 
 class Answers(BaseZhihu):
     @class_common_init(re_ans_url)
-    def __init__(self, url, title, votecount, session=None):
+    def __init__(self, url, short_url, title, votecount, session=None):
         self.url = url
+        self._short_url = short_url
         self._title = title
         self._votecount = votecount
         self._session = session
         self._session = Session()
         self._session.headers.update(Default_Header)
 
+
     def get_content(self):
         super()._make_soup()
         zm_content = self.soup.find('div',class_ = 'zm-item-answer  zm-item-expanded')
         print(datetime.fromtimestamp(int(zm_content['data-created'])))
+        html_content = zm_content.find('div', 'zm-editable-content clearfix')
+        #先把url和content做成dict，然后存到文件里面
+        if self._short_url not in answers_dict:
+            answers_dict[self._short_url]=html_content
+
+
 
 
 
@@ -141,11 +156,13 @@ class Author(BaseZhihu):
             modelink = '?order_by=created&page='
         pages = math.ceil(int(self._answers) / 20)
         for page in range(pages):
+            #page = 3
             self.url = self.url+self._answerlink+modelink+str(page+1)
             print(self.url)
             super()._make_soup()
             answers_list= self.soup.find('div', id='zh-profile-answer-list-outer').find_all('div', class_ ='zm-item')
-            for x in range(20):
+            for x in range(len(answers_list)):
+                #x = 7
                 answer = answers_list[x]
                 answer_title = answer.h2.a.text
                 answer_href = answer.h2.a['href']
@@ -156,10 +173,15 @@ class Author(BaseZhihu):
                 # self.url = ZH_url+answer_href
                 # super()._make_soup()
                 print(answer_title +' '+answer_href +' '+ answer_votecount)
-                real_answer =Answers(ZH_url+answer_href, answer_title, answer_votecount)
+                real_answer =Answers(ZH_url+answer_href, answer_href, answer_title, answer_votecount)
                 real_answer.get_content()
+                time.sleep(1)
+            time.sleep(10)
 
-
+        print(len(answers_dict))
+        f = open('d://py-code//html_content', 'w')
+        #pickle.dump(answers_dict, f)#json and pickle转换html有问题
+        f.close()
 
 """
 个人页面过于麻烦，如何抽象？-->先整页面解析，再分层解析
@@ -169,9 +191,11 @@ class Author(BaseZhihu):
 2和3其实都是一样解析，先不管评论
 """
 if __name__ == '__main__':
-    url='https://www.zhihu.com/people/douzishushu'
+    sys.setrecursionlimit(1000000) #解决递归深度问题，默认为999，设置为100w
+    #url='https://www.zhihu.com/people/douzishushu'
+    url='https://www.zhihu.com/people/SONG-OF-SIREN'
     author = Author(url)
     author.get_info()
     author.get_answers(1)
-
+    print('finish!')
 
