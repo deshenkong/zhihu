@@ -3,8 +3,8 @@
 import functools
 import re
 import math
+import requests
 from datetime import datetime
-from requests import Session
 from bs4 import BeautifulSoup
 from requests.packages.urllib3.util import Retry
 import pdfcrowd
@@ -37,7 +37,7 @@ def class_common_init(url_re, allowed_none=True, trailing_slash=True):
                 if not url.endswith('/') and trailing_slash:
                     url += '/'
             if 'session' not in kwargs.keys() or kwargs['session'] is None:
-                kwargs['session'] = Session()
+                kwargs['session'] = requests.Session()
                 kwargs['session'].mount('https://', Retry(5))
                 kwargs['session'].mount('http://', Retry(5))
             self.soup = None
@@ -86,7 +86,7 @@ class Answers(BaseZhihu):
         self._title = title
         self._votecount = votecount
         self._session = session
-        self._session = Session()
+        self._session = requests.Session()
         self._session.headers.update(Default_Header)
 
 
@@ -113,7 +113,7 @@ class Author(BaseZhihu):
         :rtype: Author
         """
         self.url = url
-        self._session = Session()
+        self._session = requests.Session()
         self._session.headers.update(Default_Header)
 
 
@@ -156,32 +156,59 @@ class Author(BaseZhihu):
             modelink = '?order_by=created&page='
         pages = math.ceil(int(self._answers) / 20)
         for page in range(pages):
-            #page = 3
+            #page = 2
             self.url = self.url+self._answerlink+modelink+str(page+1)
             print(self.url)
-            super()._make_soup()
+            #super()._make_soup()
+            content = super()._get_content()
+            super()._gen_soup(content)
             answers_list= self.soup.find('div', id='zh-profile-answer-list-outer').find_all('div', class_ ='zm-item')
             for x in range(len(answers_list)):
                 #x = 7
                 answer = answers_list[x]
                 answer_title = answer.h2.a.text
                 answer_href = answer.h2.a['href']
-                answer_votecount = answer.find('div',class_="zm-item-vote-info ")['data-votecount']
+                answer_votecount_tag = answer.find('div',class_="zm-item-vote-info ")
+                if answer_votecount_tag is None:
+                    answer_votecount = 0
+                else:
+                    answer_votecount = answer_votecount_tag['data-votecount']
                 #下面的方法不可行，因为只有部分文字
                 #zm_content = content.find('div', class_='zm-item-rich-text js-collapse-body').div.text
                 #下面的方法也不行，会把上面的soup给毁了，只能加个类了...
                 # self.url = ZH_url+answer_href
                 # super()._make_soup()
-                print(answer_title +' '+answer_href +' '+ answer_votecount)
+                print(answer_title +' '+answer_href +' '+ str(answer_votecount))
                 real_answer =Answers(ZH_url+answer_href, answer_href, answer_title, answer_votecount)
                 real_answer.get_content()
                 time.sleep(1)
             time.sleep(10)
 
         print(len(answers_dict))
-        f = open('d://py-code//html_content', 'w')
+        f = open('d://html_content', 'w')
         #pickle.dump(answers_dict, f)#json and pickle转换html有问题
         f.close()
+
+class Login(object):
+    def __init__(self, cookies=None):
+        self._session = requests.Session()
+        self._session.headers.update(Default_Header)
+
+    def log_in(self):
+        email = input('email: ')
+        password = input('password: ')
+        _xsrf = BeautifulSoup(self._session.get('https://www.zhihu.com/#signin').content)\
+            .find('input', attrs={'name': '_xsrf'})['value']
+        data = {'email': email,
+                'password': password,
+                'remember_me': 'true',
+                '_xsrf':_xsrf
+                }
+        self._session.post('https://www.zhihu.com/login/email', data=data)
+
+
+
+
 
 """
 个人页面过于麻烦，如何抽象？-->先整页面解析，再分层解析
@@ -193,7 +220,10 @@ class Author(BaseZhihu):
 if __name__ == '__main__':
     sys.setrecursionlimit(1000000) #解决递归深度问题，默认为999，设置为100w
     #url='https://www.zhihu.com/people/douzishushu'
+    client = Login()
+    client.log_in()
     url='https://www.zhihu.com/people/SONG-OF-SIREN'
+    #url = 'https://www.zhihu.com/people/lu-fei-82-41'
     author = Author(url)
     author.get_info()
     author.get_answers(1)
