@@ -6,6 +6,7 @@ import math
 import requests
 from datetime import datetime
 from bs4 import BeautifulSoup
+from bs4 import Tag, NavigableString
 from requests.packages.urllib3.util import Retry
 import pdfcrowd
 import os
@@ -66,6 +67,47 @@ def htmltopdf(html,pdfname):
         except pdfcrowd.Error:
             print('Failed: {}')
 
+def clone_bs4_elem(el):
+    """Clone a bs4 tag before modifying it.
+
+    Code from `http://stackoverflow.com/questions/23057631/clone-element-with
+    -beautifulsoup`
+    """
+    if isinstance(el, NavigableString):
+        return type(el)(el)
+
+    copy = Tag(None, el.builder, el.name, el.namespace, el.nsprefix)
+    # work around bug where there is no builder set
+    # https://bugs.launchpad.net/beautifulsoup/+bug/1307471
+    copy.attrs = dict(el.attrs)
+    for attr in ('can_be_empty_element', 'hidden'):
+        setattr(copy, attr, getattr(el, attr))
+    for child in el.contents:
+        copy.append(clone_bs4_elem(child))
+    return copy
+
+def answer_content_process(content):
+    content = clone_bs4_elem(content)
+    del content['class']
+    soup = BeautifulSoup(
+        '<html><head><meta charset="utf-8"></head><body></body></html>')
+    soup.body.append(content)
+    # no_script_list = soup.find_all("noscript")
+    # for no_script in no_script_list:
+    #     no_script.extract()
+    # img_list = soup.find_all(
+    #     "img", class_=["origin_image", "content_image"])
+    # for img in img_list:
+    #     if "content_image" in img['class']:
+    #         img['data-original'] = img['data-actualsrc']
+    #     new_img = soup.new_tag('img', src=PROTOCOL + img['data-original'])
+    #     img.replace_with(new_img)
+    #     if img.next_sibling is None:
+    #         new_img.insert_after(soup.new_tag('br'))
+    # useless_list = soup.find_all("i", class_="icon-external")
+    # for useless in useless_list:
+    #     useless.extract()
+    return soup.prettify()
 
 class BaseZhihu:
     def _gen_soup(self, content):
@@ -84,6 +126,7 @@ class BaseZhihu:
 
 #TODO:这个全局变量的设计极其糟糕
 all_url = {} #存放url
+all_content = {} #存放author - html
 
 class Answers(BaseZhihu):
     @class_common_init(re_ans_url)
@@ -106,7 +149,8 @@ class Answers(BaseZhihu):
         zm_content = self.soup.find('div',class_ = 'zm-item-answer  zm-item-expanded')
         print(datetime.fromtimestamp(int(zm_content['data-created'])))
         html_content = zm_content.find('div', 'zm-editable-content clearfix')
-
+        #html_content = answer_content_process(html_content)
+        return  html_content
 
 
 
@@ -187,7 +231,7 @@ class Author(BaseZhihu):
                 else:
                     all_url[answer_href]= x#随便填点东西
                     real_answer =Answers(ZH_url+answer_href, answer_href, answer_title, answer_votecount)
-                    real_answer.get_content()
+                    a_content = real_answer.get_content()
                     time.sleep(2)
             time.sleep(10)
 
@@ -227,15 +271,14 @@ class Login(object):
 """
 if __name__ == '__main__':
     sys.setrecursionlimit(1000000) #解决递归深度问题，默认为999，设置为100w
-    f = open('d://all_url', 'r')
-    try:
+
+    if os.path.isfile('d://all_url'):
+        f = open('d://all_url', 'r')
         all_url= json.load(f)
-    except:
-        pass
+        f.close()
 
-    f.close()
-
-    url='https://www.zhihu.com/people/samuel-kong'
+    #url='https://www.zhihu.com/people/samuel-kong'
+    url = 'https://www.zhihu.com/people/douzishushu'
     # client = Login()
     # client.log_in()
     #url='https://www.zhihu.com/people/xlzd'
