@@ -12,15 +12,22 @@ import os
 
 import time
 import sys
-import pickle
+import json
 
 ZH_url = 'https://www.zhihu.com'
 
-Default_Header = {'X-Requested-With': 'XMLHttpRequest',
-                  'Referer': 'http://www.zhihu.com',
-                  'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; '
-                                'rv:39.0) Gecko/20100101 Firefox/39.0',
-                  'Host': 'www.zhihu.com'}
+Default_Header = {
+    'Connection': 'keep-alive',
+    'Accept': 'text/html, application/xhtml+xml, */*',
+    'Accept-Language': 'zh-CN,zh;q=0.8',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.106 Safari/537.36',
+    'Accept-Encoding': 'gzip, deflate',
+    'Host': 'www.zhihu.com',
+    'Origin': 'https://www.zhihu.com',
+    'X-Requested-With': 'XMLHttpRequest',
+    'Referer': 'https://www.zhihu.com/',
+    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+}
 
 re_author_url = re.compile(r'^https?://www\.zhihu\.com/people/[^/]+/?$')
 re_ans_url = re.compile(r'^https?://www\.zhihu\.com/question/\d+/answer/\d+/?$')
@@ -76,7 +83,7 @@ class BaseZhihu:
         self._gen_soup(self._get_content())
 
 #TODO:这个全局变量的设计极其糟糕
-answers_dict = {} #存放url:content
+all_url = {} #存放url
 
 class Answers(BaseZhihu):
     @class_common_init(re_ans_url)
@@ -91,13 +98,14 @@ class Answers(BaseZhihu):
 
 
     def get_content(self):
+        """
+        1.保存所有的url，防止重复解析
+        2.当次运行的回来的内存保存到pdf文件里面
+        """
         super()._make_soup()
         zm_content = self.soup.find('div',class_ = 'zm-item-answer  zm-item-expanded')
         print(datetime.fromtimestamp(int(zm_content['data-created'])))
         html_content = zm_content.find('div', 'zm-editable-content clearfix')
-        #先把url和content做成dict，然后存到文件里面
-        if self._short_url not in answers_dict:
-            answers_dict[self._short_url]=html_content
 
 
 
@@ -173,20 +181,19 @@ class Author(BaseZhihu):
                     answer_votecount = 0
                 else:
                     answer_votecount = answer_votecount_tag['data-votecount']
-                #下面的方法不可行，因为只有部分文字
-                #zm_content = content.find('div', class_='zm-item-rich-text js-collapse-body').div.text
-                #下面的方法也不行，会把上面的soup给毁了，只能加个类了...
-                # self.url = ZH_url+answer_href
-                # super()._make_soup()
                 print(answer_title +' '+answer_href +' '+ str(answer_votecount))
-                real_answer =Answers(ZH_url+answer_href, answer_href, answer_title, answer_votecount)
-                real_answer.get_content()
-                time.sleep(1)
+                if answer_href in all_url:
+                    print('the url already be crewled'+answer_href)
+                else:
+                    all_url[answer_href]= x#随便填点东西
+                    real_answer =Answers(ZH_url+answer_href, answer_href, answer_title, answer_votecount)
+                    real_answer.get_content()
+                    time.sleep(2)
             time.sleep(10)
 
-        print(len(answers_dict))
-        f = open('d://html_content', 'w')
-        #pickle.dump(answers_dict, f)#json and pickle转换html有问题
+        print(len(all_url))
+        f = open('d://all_url', 'w')
+        json.dump(all_url, f)
         f.close()
 
 class Login(object):
@@ -204,7 +211,8 @@ class Login(object):
                 'remember_me': 'true',
                 '_xsrf':_xsrf
                 }
-        self._session.post('https://www.zhihu.com/login/email', data=data)
+        resp= self._session.post('https://www.zhihu.com/login/email', data=data).content
+        print(resp)
 
 
 
@@ -219,11 +227,19 @@ class Login(object):
 """
 if __name__ == '__main__':
     sys.setrecursionlimit(1000000) #解决递归深度问题，默认为999，设置为100w
-    #url='https://www.zhihu.com/people/douzishushu'
-    client = Login()
-    client.log_in()
-    url='https://www.zhihu.com/people/SONG-OF-SIREN'
-    #url = 'https://www.zhihu.com/people/lu-fei-82-41'
+    f = open('d://all_url', 'r')
+    try:
+        all_url= json.load(f)
+    except:
+        pass
+
+    f.close()
+
+    url='https://www.zhihu.com/people/samuel-kong'
+    # client = Login()
+    # client.log_in()
+    #url='https://www.zhihu.com/people/xlzd'
+    #url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
     author = Author(url)
     author.get_info()
     author.get_answers(1)
