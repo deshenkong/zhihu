@@ -126,7 +126,7 @@ class BaseZhihu:
 
 #TODO:这个全局变量的设计极其糟糕
 all_url = {} #存放url
-all_content = {} #存放author - html
+all_content = {} #存放title - html
 
 class Answers(BaseZhihu):
     @class_common_init(re_ans_url)
@@ -135,9 +135,12 @@ class Answers(BaseZhihu):
         self._short_url = short_url
         self._title = title
         self._votecount = votecount
-        self._session = session
-        self._session = requests.Session()
-        self._session.headers.update(Default_Header)
+        if Gobal_Session is not None:
+            self._session = Gobal_Session
+        else:
+            self._session = session
+            self._session = requests.Session()
+            self._session.headers.update(Default_Header)
 
 
     def get_content(self):
@@ -165,8 +168,11 @@ class Author(BaseZhihu):
         :rtype: Author
         """
         self.url = url
-        self._session = requests.Session()
-        self._session.headers.update(Default_Header)
+        if Gobal_Session is not None:
+            self._session = Gobal_Session
+        else:
+            self._session = requests.Session()
+            self._session.headers.update(Default_Header)
 
 
     def get_info(self):
@@ -211,9 +217,7 @@ class Author(BaseZhihu):
             #page = 2
             self.url = self.url+self._answerlink+modelink+str(page+1)
             print(self.url)
-            #super()._make_soup()
-            content = super()._get_content()
-            super()._gen_soup(content)
+            super()._make_soup()
             answers_list= self.soup.find('div', id='zh-profile-answer-list-outer').find_all('div', class_ ='zm-item')
             for x in range(len(answers_list)):
                 #x = 7
@@ -226,40 +230,59 @@ class Author(BaseZhihu):
                 else:
                     answer_votecount = answer_votecount_tag['data-votecount']
                 print(answer_title +' '+answer_href +' '+ str(answer_votecount))
-                if answer_href in all_url:
-                    print('the url already be crewled'+answer_href)
-                else:
+                if answer_href not in all_url:
                     all_url[answer_href]= x#随便填点东西
                     real_answer =Answers(ZH_url+answer_href, answer_href, answer_title, answer_votecount)
-                    a_content = real_answer.get_content()
-                    time.sleep(2)
-            time.sleep(10)
+                    html_content = real_answer.get_content()
+                    all_content[answer_title] = html_content
+                    time.sleep(4)
+            time.sleep(20)
 
         print(len(all_url))
         f = open('d://all_url', 'w')
         json.dump(all_url, f)
         f.close()
 
-class Login(object):
-    def __init__(self, cookies=None):
-        self._session = requests.Session()
-        self._session.headers.update(Default_Header)
 
-    def log_in(self):
-        email = input('email: ')
-        password = input('password: ')
-        _xsrf = BeautifulSoup(self._session.get('https://www.zhihu.com/#signin').content)\
-            .find('input', attrs={'name': '_xsrf'})['value']
-        data = {'email': email,
-                'password': password,
-                'remember_me': 'true',
-                '_xsrf':_xsrf
-                }
-        resp= self._session.post('https://www.zhihu.com/login/email', data=data).content
-        print(resp)
+def get_cookies(session):
+    _session = session
+    email = input('email: ')
+    password = input('password: ')
+    _xsrf = BeautifulSoup(_session.get('https://www.zhihu.com/#signin').content)\
+        .find('input', attrs={'name': '_xsrf'})['value']
+    data = {'email': email,
+            'password': password,
+            'remember_me': 'true',
+            '_xsrf':_xsrf
+            }
+    resp= _session.post('https://www.zhihu.com/login/email', data=data).json()
+    code = int(resp['r'])
+    message = resp['msg']
+    print(message)
+    if code == 0:#成功
+        cookies_str = json.dumps(_session.cookies.get_dict())
+        with open('d://cookies', 'w') as f:
+            f.write(cookies_str)
+        return cookies_str
+    else:
+        return None
 
 
+def log_in():
+    _session = requests.Session()
+    _session.headers.update(Default_Header)
 
+    if os.path.isfile('d://cookies'):
+        with open('d://cookies') as f:
+            cookies = f.read()
+    else:
+        cookies = get_cookies(_session)
+        if cookies is None:
+            return
+    cookies_dict = json.loads(cookies)
+    _session.cookies.update(cookies_dict)
+
+    return _session
 
 
 """
@@ -269,8 +292,12 @@ class Login(object):
 3.获取提问
 2和3其实都是一样解析，先不管评论
 """
+Gobal_Session = None
+
 if __name__ == '__main__':
     sys.setrecursionlimit(1000000) #解决递归深度问题，默认为999，设置为100w
+
+    Gobal_Session = log_in()
 
     if os.path.isfile('d://all_url'):
         f = open('d://all_url', 'r')
@@ -278,11 +305,9 @@ if __name__ == '__main__':
         f.close()
 
     #url='https://www.zhihu.com/people/samuel-kong'
-    url = 'https://www.zhihu.com/people/douzishushu'
-    # client = Login()
-    # client.log_in()
+    #url = 'https://www.zhihu.com/people/douzishushu'
     #url='https://www.zhihu.com/people/xlzd'
-    #url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
+    url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
     author = Author(url)
     author.get_info()
     author.get_answers(1)
