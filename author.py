@@ -88,12 +88,18 @@ def clone_bs4_elem(el):
 def answer_content_process(content_list):
     soup = BeautifulSoup(
         '<html><head></head><body></body></html>')
+    tag_list = []
     for title, content in content_list.items():
         content = clone_bs4_elem(content)
         del content['class']
-        soup.body.append('<p class="title"><b>'+title+'</b></p>')
-        soup.body.append(content)
-        soup.body.append('<br />')
+        b_tag = soup.new_tag("b")
+        b_tag.string = title
+        tag_list.append(b_tag)
+        tag_list.append(content)
+
+    for x in range(len(tag_list)):
+        soup.body.append(tag_list[x])#TODO:处理略为粗糙，邮箱处理就有问题
+
     # no_script_list = soup.find_all("noscript")
     # for no_script in no_script_list:
     #     no_script.extract()
@@ -237,7 +243,7 @@ class Author(BaseZhihu):
                     real_answer =Answers(ZH_url+answer_href, answer_href, answer_title, answer_votecount)
                     html_content = real_answer.get_content()
                     all_content[answer_title] = html_content
-                    time.sleep(4)
+                    time.sleep(20)
             time.sleep(20)
 
         print(len(all_url))
@@ -306,14 +312,17 @@ if __name__ == '__main__':
         all_url= json.load(f)
         f.close()
 
-    url='https://www.zhihu.com/people/samuel-kong'
+    #url='https://www.zhihu.com/people/samuel-kong'
     #url = 'https://www.zhihu.com/people/douzishushu'
-    #url='https://www.zhihu.com/people/xlzd'
+    url='https://www.zhihu.com/people/only_guest'
     #url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
     author = Author(url)
     author.get_info()
     author.get_answers(1)
     html = answer_content_process(all_content)
-    htmltopdf(html, '1.pdf')
+    #html = html.decode('utf-8')
+    #htmltopdf(html, '1.pdf')
+    with open('d://save.html', 'w') as f:
+            f.write(html)
     print('finish!')
 
