@@ -57,12 +57,11 @@ def class_common_init(url_re, allowed_none=True, trailing_slash=True):
 def htmltopdf(html,pdfname):
         try:
             # create an API client instance
-            #client = pdfcrowd.Client("deshenkong", "30658dd7b6000c089b4c42fe47233f2b")
+            client = pdfcrowd.Client("deshenkong", "30658dd7b6000c089b4c42fe47233f2b")
             name = os.path.join('d:\\','PythonCode',pdfname)
             with open(name, 'wb') as output_file:
-                print(name)
-                # convert a web page and store the generated PDF into a pdf variable
-                #pdf = client.convertURI(html,output_file)
+                # print(name)
+                pdf = client.convertHtml(html,output_file)
 
         except pdfcrowd.Error:
             print('Failed: {}')
@@ -86,12 +85,15 @@ def clone_bs4_elem(el):
         copy.append(clone_bs4_elem(child))
     return copy
 
-def answer_content_process(content):
-    content = clone_bs4_elem(content)
-    del content['class']
+def answer_content_process(content_list):
     soup = BeautifulSoup(
-        '<html><head><meta charset="utf-8"></head><body></body></html>')
-    soup.body.append(content)
+        '<html><head></head><body></body></html>')
+    for title, content in content_list.items():
+        content = clone_bs4_elem(content)
+        del content['class']
+        soup.body.append('<p class="title"><b>'+title+'</b></p>')
+        soup.body.append(content)
+        soup.body.append('<br />')
     # no_script_list = soup.find_all("noscript")
     # for no_script in no_script_list:
     #     no_script.extract()
@@ -149,8 +151,8 @@ class Answers(BaseZhihu):
         2.当次运行的回来的内存保存到pdf文件里面
         """
         super()._make_soup()
-        zm_content = self.soup.find('div',class_ = 'zm-item-answer  zm-item-expanded')
-        print(datetime.fromtimestamp(int(zm_content['data-created'])))
+        zm_content = self.soup.find('div',class_ = 'zm-item-answer')
+        #print(datetime.fromtimestamp(int(zm_content['data-created'])))#TODO:有的链接没有这个参数
         html_content = zm_content.find('div', 'zm-editable-content clearfix')
         #html_content = answer_content_process(html_content)
         return  html_content
@@ -304,12 +306,14 @@ if __name__ == '__main__':
         all_url= json.load(f)
         f.close()
 
-    #url='https://www.zhihu.com/people/samuel-kong'
+    url='https://www.zhihu.com/people/samuel-kong'
     #url = 'https://www.zhihu.com/people/douzishushu'
     #url='https://www.zhihu.com/people/xlzd'
-    url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
+    #url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
     author = Author(url)
     author.get_info()
     author.get_answers(1)
+    html = answer_content_process(all_content)
+    htmltopdf(html, '1.pdf')
     print('finish!')
 
