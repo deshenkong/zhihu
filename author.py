@@ -78,20 +78,18 @@ PROTOCOL = ''
 def answer_content_process(content_list):
     soup = BeautifulSoup(
         '<html><head></head><body></body></html>')
-    tag_list = []
+
     for title, content in content_list.items():
         content = clone_bs4_elem(content)
         del content['class']
-        #content = content.decode('utf-8','ignore')
         b_tag = soup.new_tag("b")
         b_tag.string = title
-        tag_list.append(b_tag)
-        tag_list.append(content)
+        br_tag = soup.new_tag("br")
+        soup.body.append(b_tag)
+        soup.body.append(content)
+        soup.body.append(br_tag)
 
-    for x in range(len(tag_list)):
-        soup.body.append(tag_list[x])#TODO:处理略为粗糙，邮箱处理就有问题
-
-    #处理图片
+    #TODO:处理图片但是一些引用和邮箱还没处理
     no_script_list = soup.find_all("noscript")
     for no_script in no_script_list:
         no_script.extract()
@@ -124,7 +122,7 @@ class BaseZhihu:
         # refresh self.soup's content
         self._gen_soup(self._get_content())
 
-#TODO:这个全局变量的设计极其糟糕
+#TODO:全局变量的设计极其糟糕
 all_url = {} #存放url
 all_content = {} #存放title - html
 
@@ -235,14 +233,20 @@ class Author(BaseZhihu):
                     real_answer =Answers(ZH_url+answer_href, answer_href, answer_title, answer_votecount)
                     html_content = real_answer.get_content()
                     all_content[answer_title] = html_content
-                    time.sleep(20)
-            time.sleep(20)
+                    time.sleep(30)
+            #time.sleep(20)
 
         print(len(all_url))
         f = open('d://all_url', 'w')
         json.dump(all_url, f)
         f.close()
 
+    def get_posts(self):
+        """
+        获取专栏
+        http://zhuanlan.zhihu.com/hemingke
+        """
+        pass
 
 def get_cookies(session):
     _session = session
@@ -303,16 +307,25 @@ if __name__ == '__main__':
         all_url= json.load(f)
         f.close()
 
-    #url='https://www.zhihu.com/people/samuel-kong'
+    url='https://www.zhihu.com/people/samuel-kong'
     #url = 'https://www.zhihu.com/people/douzishushu'
-    url='https://www.zhihu.com/people/only_guest'
+    #url='https://www.zhihu.com/people/only_guest'
     #url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
     author = Author(url)
     author.get_info()
     author.get_answers()
     html = answer_content_process(all_content)
-    #windows文件编码为gbk，网页一般是utf-8，所以要规避一些错误
+    #windows文件编码为gbk，网页一般是utf-8，所以要ignore一些转码错误
+    mode = 'md'
     with open('d://save.html', 'w',encoding='gbk', errors='ignore') as f:
-            f.write(html)
+            if mode == 'html':
+                f.write(html)
+            else:
+                import html2text
+                h2t = html2text.HTML2Text()
+                h2t.body_width = 0
+                f.write(h2t.handle(html))
+
+    author.get_posts()
     print('finish!')
 
