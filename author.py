@@ -10,6 +10,7 @@ from bs4 import Tag, NavigableString
 from requests.packages.urllib3.util import Retry
 import pdfcrowd
 import os
+import codecs
 
 import time
 import sys
@@ -53,19 +54,6 @@ def class_common_init(url_re, allowed_none=True, trailing_slash=True):
         return wrapper
     return real
 
-#用的是pdfcrowd试用版，一个月只有100次权限,so...
-def htmltopdf(html,pdfname):
-        try:
-            # create an API client instance
-            client = pdfcrowd.Client("deshenkong", "30658dd7b6000c089b4c42fe47233f2b")
-            name = os.path.join('d:\\','PythonCode',pdfname)
-            with open(name, 'wb') as output_file:
-                # print(name)
-                pdf = client.convertHtml(html,output_file)
-
-        except pdfcrowd.Error:
-            print('Failed: {}')
-
 def clone_bs4_elem(el):
     """Clone a bs4 tag before modifying it.
 
@@ -85,6 +73,8 @@ def clone_bs4_elem(el):
         copy.append(clone_bs4_elem(child))
     return copy
 
+PROTOCOL = ''
+
 def answer_content_process(content_list):
     soup = BeautifulSoup(
         '<html><head></head><body></body></html>')
@@ -92,6 +82,7 @@ def answer_content_process(content_list):
     for title, content in content_list.items():
         content = clone_bs4_elem(content)
         del content['class']
+        #content = content.decode('utf-8','ignore')
         b_tag = soup.new_tag("b")
         b_tag.string = title
         tag_list.append(b_tag)
@@ -100,21 +91,22 @@ def answer_content_process(content_list):
     for x in range(len(tag_list)):
         soup.body.append(tag_list[x])#TODO:处理略为粗糙，邮箱处理就有问题
 
-    # no_script_list = soup.find_all("noscript")
-    # for no_script in no_script_list:
-    #     no_script.extract()
-    # img_list = soup.find_all(
-    #     "img", class_=["origin_image", "content_image"])
-    # for img in img_list:
-    #     if "content_image" in img['class']:
-    #         img['data-original'] = img['data-actualsrc']
-    #     new_img = soup.new_tag('img', src=PROTOCOL + img['data-original'])
-    #     img.replace_with(new_img)
-    #     if img.next_sibling is None:
-    #         new_img.insert_after(soup.new_tag('br'))
-    # useless_list = soup.find_all("i", class_="icon-external")
-    # for useless in useless_list:
-    #     useless.extract()
+    #处理图片
+    no_script_list = soup.find_all("noscript")
+    for no_script in no_script_list:
+        no_script.extract()
+    img_list = soup.find_all(
+        "img", class_=["origin_image", "content_image"])
+    for img in img_list:
+        if "content_image" in img['class']:
+            img['data-original'] = img['data-actualsrc']
+        new_img = soup.new_tag('img', src=PROTOCOL + img['data-original'])
+        img.replace_with(new_img)
+        if img.next_sibling is None:
+            new_img.insert_after(soup.new_tag('br'))
+    useless_list = soup.find_all("i", class_="icon-external")
+    for useless in useless_list:
+        useless.extract()
     return soup.prettify()
 
 class BaseZhihu:
@@ -210,7 +202,7 @@ class Author(BaseZhihu):
 
 
 
-    def get_answers(self,mode = 0):
+    def get_answers(self,mode = 1):
         """
         两种答案的排序方式
         按时间：https://www.zhihu.com/people/douzishushu/answers?order_by=created&page=1
@@ -289,7 +281,6 @@ def log_in():
             return
     cookies_dict = json.loads(cookies)
     _session.cookies.update(cookies_dict)
-
     return _session
 
 
@@ -318,11 +309,10 @@ if __name__ == '__main__':
     #url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
     author = Author(url)
     author.get_info()
-    author.get_answers(1)
+    author.get_answers()
     html = answer_content_process(all_content)
-    #html = html.decode('utf-8')
-    #htmltopdf(html, '1.pdf')
-    with open('d://save.html', 'w') as f:
+    #windows文件编码为gbk，网页一般是utf-8，所以要规避一些错误
+    with open('d://save.html', 'w',encoding='gbk', errors='ignore') as f:
             f.write(html)
     print('finish!')
 
