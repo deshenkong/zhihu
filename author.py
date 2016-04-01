@@ -150,7 +150,6 @@ class Answers(BaseZhihu):
         zm_content = self.soup.find('div',class_ = 'zm-item-answer')
         #print(datetime.fromtimestamp(int(zm_content['data-created'])))#TODO:有的链接没有这个参数
         html_content = zm_content.find('div', 'zm-editable-content clearfix')
-        #html_content = answer_content_process(html_content)
         return  html_content
 
 
@@ -178,6 +177,7 @@ class Author(BaseZhihu):
         获取用户的简单信息
         """
         super()._make_soup()
+        self._id = self.url.split('/')[-2]
         self._name = self.soup.find('div',class_ = 'title-section ellipsis').span.text
         self._bio = self.soup.find('div',class_ = 'title-section ellipsis').find_all('span')[1].text
         self._follower_num = self.soup.find('div',class_ = 'zm-profile-side-following zg-clear')\
@@ -244,9 +244,26 @@ class Author(BaseZhihu):
     def get_posts(self):
         """
         获取专栏
-        http://zhuanlan.zhihu.com/hemingke
         """
-        pass
+        if self._posts is None:
+            print('%s do not have posts.',self._name)
+            return
+
+        origin_host = self._session.headers.get('Host')
+        self._session.headers.update(Host='zhuanlan.zhihu.com')
+        res = self._session.get('http://zhuanlan.zhihu.com/api/columns/{0}'.format((self._id).replace('-','')))
+        author_json = res.json()
+        self._session.headers.update(Host=origin_host)
+        for offset in range(0, math.ceil(int(self._posts) / 10)):
+            self._session.headers.update(Host='zhuanlan.zhihu.com')
+            url = 'http://zhuanlan.zhihu.com/api/columns/{0}/posts?limit=10&offset={1}'.\
+                    format((self._id).replace('-',''), offset * 10)
+            res = self._session.get(url)
+            post_json = res.json()
+            self._session.headers.update(Host=origin_host)
+            for post in post_json:
+                self._parse_post_data(post)
+
 
 def get_cookies(session):
     _session = session
@@ -307,24 +324,25 @@ if __name__ == '__main__':
         all_url= json.load(f)
         f.close()
 
-    url='https://www.zhihu.com/people/samuel-kong'
+    #url='https://www.zhihu.com/people/samuel-kong'
     #url = 'https://www.zhihu.com/people/douzishushu'
-    #url='https://www.zhihu.com/people/only_guest'
+    url='https://www.zhihu.com/people/he-ming-ke'
     #url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
     author = Author(url)
     author.get_info()
+    author.get_posts()
     author.get_answers()
     html = answer_content_process(all_content)
     #windows文件编码为gbk，网页一般是utf-8，所以要ignore一些转码错误
     mode = 'md'
     with open('d://save.html', 'w',encoding='gbk', errors='ignore') as f:
-            if mode == 'html':
-                f.write(html)
-            else:
-                import html2text
-                h2t = html2text.HTML2Text()
-                h2t.body_width = 0
-                f.write(h2t.handle(html))
+        if mode == 'html':
+            f.write(html)
+        else:
+            import html2text
+            h2t = html2text.HTML2Text()
+            h2t.body_width = 0
+            f.write(h2t.handle(html))
 
     author.get_posts()
     print('finish!')
