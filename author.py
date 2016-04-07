@@ -34,6 +34,17 @@ Default_Header = {
 re_author_url = re.compile(r'^https?://www\.zhihu\.com/people/[^/]+/?$')
 re_ans_url = re.compile(r'^https?://www\.zhihu\.com/question/\d+/answer/\d+/?$')
 
+#TODO:全局变量的设计极其糟糕
+all_url = {} #存放url
+all_content = {} #存放title - html
+
+SAVE_PATH = 'd://PythonCode//'
+FILTER_PATH = 'd://PythonCode//all_url'
+COOKIE_PATH = 'd://PythonCode//cookies'
+
+PROTOCOL = ''
+PIC_PROTOCOL = 'https://pic2.zhimg.com/'
+
 def class_common_init(url_re, allowed_none=True, trailing_slash=True):
     def real(func):
         @functools.wraps(func)
@@ -54,17 +65,39 @@ def class_common_init(url_re, allowed_none=True, trailing_slash=True):
         return wrapper
     return real
 
-def save_to_file(name, mode):
+def save_to_file(name, mode, html):
     #windows文件编码为gbk，网页一般是utf-8，所以要ignore一些转码错误
-    with open(name, 'w',encoding='gbk', errors='ignore') as f:
-        if mode == 'html':
+    if mode == 'html':
+        with open(name+'.html', 'w',encoding='gbk', errors='ignore') as f:
             f.write(html)
-        else:
+    else:
+        with open(name+'.md', 'w',encoding='gbk', errors='ignore') as f:
             import html2text
             h2t = html2text.HTML2Text()
             h2t.body_width = 0
             f.write(h2t.handle(html))
+#目前url不算多，不打算用布隆过滤器
+def load_url_filter():
+    if os.path.isfile(FILTER_PATH):
+        global all_url
+        f = open(FILTER_PATH, 'r')
+        all_url = json.load(f)
+        f.close()
 
+def save_url_filter():
+        f = open(FILTER_PATH, 'w')
+        json.dump(all_url, f)
+        f.close()
+
+def update_url_filter(href, x):
+    """
+    如果url不在filter里面，就更新filter，并返回ture。反之亦然
+    """
+    if href not in all_url:
+        all_url[href] = x
+        return True
+    else:
+        return False
 
 def clone_bs4_elem(el):
     """Clone a bs4 tag before modifying it.
@@ -85,8 +118,6 @@ def clone_bs4_elem(el):
         copy.append(clone_bs4_elem(child))
     return copy
 
-PROTOCOL = ''
-PIC_PROTOCOL = 'https://pic2.zhimg.com/'
 
 def post_content_process(content):
     content = clone_bs4_elem(content)
@@ -154,10 +185,6 @@ class BaseZhihu:
         # refresh self.soup's content
         self._gen_soup(self._get_content())
 
-#TODO:全局变量的设计极其糟糕
-all_url = {} #存放url
-all_content = {} #存放title - html
-
 class Answers(BaseZhihu):
     @class_common_init(re_ans_url)
     def __init__(self, url, short_url, title, votecount, session=None):
@@ -175,16 +202,12 @@ class Answers(BaseZhihu):
 
     def get_content(self):
         """
-        1.保存所有的url，防止重复解析
-        2.当次运行的回来的内存保存到pdf文件里面
         """
         super()._make_soup()
         zm_content = self.soup.find('div',class_ = 'zm-item-answer')
         #print(datetime.fromtimestamp(int(zm_content['data-created'])))#TODO:有的链接没有这个参数
         html_content = zm_content.find('div', 'zm-editable-content clearfix')
         return  html_content
-
-
 
 
 class Author(BaseZhihu):
@@ -260,18 +283,13 @@ class Author(BaseZhihu):
                 else:
                     answer_votecount = answer_votecount_tag['data-votecount']
                 print(answer_title +' '+answer_href +' '+ str(answer_votecount))
-                if answer_href not in all_url:
-                    all_url[answer_href]= x#随便填点东西
+                if update_url_filter(answer_href,x):#随便填点东西
                     real_answer =Answers(ZH_url+answer_href, answer_href, answer_title, answer_votecount)
                     html_content = real_answer.get_content()
                     all_content[answer_title] = html_content
                     time.sleep(30)
             #time.sleep(20)
-
-        print(len(all_url))
-        f = open('d://all_url', 'w')
-        json.dump(all_url, f)
-        f.close()
+        save_url_filter()
 
     def get_posts(self):
         """
@@ -295,10 +313,12 @@ class Author(BaseZhihu):
             self._session.headers.update(Host=origin_host)
             for post in post_json:
                 p_title = post['title']
-                p_name = post['author']['name']
-                p_url = 'http://zhuanlan.zhihu.com'+ post['url']
+                # p_name = post['author']['name']
+                # p_url = 'http://zhuanlan.zhihu.com'+ post['url']
+                #TODO:这里会丢弃一些格式，特别是数学公式
                 p_cont = post_content_process(BeautifulSoup(post['content']))
-                pass
+                filename = SAVE_PATH + p_title
+                save_to_file(filename, 'html', p_cont)
 
 
 
@@ -320,7 +340,7 @@ def get_cookies(session):
     print(message)
     if code == 0:#成功
         cookies_str = json.dumps(_session.cookies.get_dict())
-        with open('d://cookies', 'w') as f:
+        with open(COOKIE_PATH, 'w') as f:
             f.write(cookies_str)
         return cookies_str
     else:
@@ -331,8 +351,8 @@ def log_in():
     _session = requests.Session()
     _session.headers.update(Default_Header)
 
-    if os.path.isfile('d://cookies'):
-        with open('d://cookies') as f:
+    if os.path.isfile(COOKIE_PATH):
+        with open(COOKIE_PATH) as f:
             cookies = f.read()
     else:
         cookies = get_cookies(_session)
@@ -344,28 +364,20 @@ def log_in():
 
 
 """
-个人页面过于麻烦，如何抽象？-->先整页面解析，再分层解析
-1.基本信息
-2.获取回答
-3.获取提问
-2和3其实都是一样解析，先不管评论
+
 """
 Gobal_Session = None
 
 if __name__ == '__main__':
     sys.setrecursionlimit(1000000) #解决递归深度问题，默认为999，设置为100w
-
     Gobal_Session = log_in()
-
-    if os.path.isfile('d://all_url'):
-        f = open('d://all_url', 'r')
-        all_url= json.load(f)
-        f.close()
+    load_url_filter()
 
     #url='https://www.zhihu.com/people/samuel-kong'
     #url = 'https://www.zhihu.com/people/douzishushu'
     url='https://www.zhihu.com/people/he-ming-ke'
     #url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
+
     author = Author(url)
     author.get_info()
     author.get_posts()
