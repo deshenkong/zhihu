@@ -54,6 +54,18 @@ def class_common_init(url_re, allowed_none=True, trailing_slash=True):
         return wrapper
     return real
 
+def save_to_file(name, mode):
+    #windows文件编码为gbk，网页一般是utf-8，所以要ignore一些转码错误
+    with open(name, 'w',encoding='gbk', errors='ignore') as f:
+        if mode == 'html':
+            f.write(html)
+        else:
+            import html2text
+            h2t = html2text.HTML2Text()
+            h2t.body_width = 0
+            f.write(h2t.handle(html))
+
+
 def clone_bs4_elem(el):
     """Clone a bs4 tag before modifying it.
 
@@ -74,6 +86,25 @@ def clone_bs4_elem(el):
     return copy
 
 PROTOCOL = ''
+PIC_PROTOCOL = 'https://pic2.zhimg.com/'
+
+def post_content_process(content):
+    content = clone_bs4_elem(content)
+    del content['class']
+    soup = BeautifulSoup(
+        '<html><head></head><body></body></html>')
+    soup.body.append(content)
+    img_list = soup.find_all("img")
+    for img in img_list:
+        #原图的话就不需要replace
+        new_img = soup.new_tag('img', src=PIC_PROTOCOL + img['src'].replace('.jpg','_b.jpg'))
+        img.replace_with(new_img)
+        if img.next_sibling is None:
+            new_img.insert_after(soup.new_tag('br'))
+    useless_list = soup.find_all("i", class_="icon-external")
+    for useless in useless_list:
+        useless.extract()
+    return soup.prettify()
 
 def answer_content_process(content_list):
     soup = BeautifulSoup(
@@ -96,8 +127,9 @@ def answer_content_process(content_list):
     img_list = soup.find_all(
         "img", class_=["origin_image", "content_image"])
     for img in img_list:
-        if "content_image" in img['class']:
-            img['data-original'] = img['data-actualsrc']
+        #不想要原图，太大
+        # if "content_image" in img['class']:
+        #     img['data-original'] = img['data-actualsrc']
         new_img = soup.new_tag('img', src=PROTOCOL + img['data-original'])
         img.replace_with(new_img)
         if img.next_sibling is None:
@@ -262,7 +294,13 @@ class Author(BaseZhihu):
             post_json = res.json()
             self._session.headers.update(Host=origin_host)
             for post in post_json:
-                self._parse_post_data(post)
+                p_title = post['title']
+                p_name = post['author']['name']
+                p_url = 'http://zhuanlan.zhihu.com'+ post['url']
+                p_cont = post_content_process(BeautifulSoup(post['content']))
+                pass
+
+
 
 
 def get_cookies(session):
@@ -333,17 +371,6 @@ if __name__ == '__main__':
     author.get_posts()
     author.get_answers()
     html = answer_content_process(all_content)
-    #windows文件编码为gbk，网页一般是utf-8，所以要ignore一些转码错误
-    mode = 'md'
-    with open('d://save.html', 'w',encoding='gbk', errors='ignore') as f:
-        if mode == 'html':
-            f.write(html)
-        else:
-            import html2text
-            h2t = html2text.HTML2Text()
-            h2t.body_width = 0
-            f.write(h2t.handle(html))
 
-    author.get_posts()
     print('finish!')
 
