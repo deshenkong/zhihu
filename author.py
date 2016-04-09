@@ -4,7 +4,7 @@ import functools
 import re
 import math
 import requests
-from datetime import datetime
+import datetime
 from bs4 import BeautifulSoup
 from bs4 import Tag, NavigableString
 from requests.packages.urllib3.util import Retry
@@ -76,6 +76,11 @@ def save_to_file(name, mode, html):
             h2t = html2text.HTML2Text()
             h2t.body_width = 0
             f.write(h2t.handle(html))
+
+def process_symbol(string):
+    string = re.sub("[\s+\.\!\/_,$%^*(+\"\']+|[+——！，。？?、~@#￥%……&*（）]+", " ",string)
+    return string
+
 #目前url不算多，不打算用布隆过滤器
 def load_url_filter():
     if os.path.isfile(FILTER_PATH):
@@ -93,6 +98,7 @@ def update_url_filter(href, x):
     """
     如果url不在filter里面，就更新filter，并返回ture。反之亦然
     """
+    global all_url
     if href not in all_url:
         all_url[href] = x
         return True
@@ -118,50 +124,27 @@ def clone_bs4_elem(el):
         copy.append(clone_bs4_elem(child))
     return copy
 
-
-def post_content_process(content):
+def content_process(content, mode):
     content = clone_bs4_elem(content)
     del content['class']
     soup = BeautifulSoup(
         '<html><head></head><body></body></html>')
     soup.body.append(content)
-    img_list = soup.find_all("img")
-    for img in img_list:
-        #原图的话就不需要replace
-        new_img = soup.new_tag('img', src=PIC_PROTOCOL + img['src'].replace('.jpg','_b.jpg'))
-        img.replace_with(new_img)
-        if img.next_sibling is None:
-            new_img.insert_after(soup.new_tag('br'))
-    useless_list = soup.find_all("i", class_="icon-external")
-    for useless in useless_list:
-        useless.extract()
-    return soup.prettify()
-
-def answer_content_process(content_list):
-    soup = BeautifulSoup(
-        '<html><head></head><body></body></html>')
-
-    for title, content in content_list.items():
-        content = clone_bs4_elem(content)
-        del content['class']
-        b_tag = soup.new_tag("b")
-        b_tag.string = title
-        br_tag = soup.new_tag("br")
-        soup.body.append(b_tag)
-        soup.body.append(content)
-        soup.body.append(br_tag)
-
-    #TODO:处理图片但是一些引用和邮箱还没处理
     no_script_list = soup.find_all("noscript")
     for no_script in no_script_list:
         no_script.extract()
-    img_list = soup.find_all(
-        "img", class_=["origin_image", "content_image"])
+    if mode == 'answer':
+        img_list = soup.find_all("img", class_=["origin_image", "content_image"])
+    elif mode == 'post':
+        img_list = soup.find_all("img")
     for img in img_list:
-        #不想要原图，太大
-        # if "content_image" in img['class']:
-        #     img['data-original'] = img['data-actualsrc']
-        new_img = soup.new_tag('img', src=PROTOCOL + img['data-original'])
+        if mode == 'answer':
+            if "content_image" in img['class']:
+                img['data-original'] = img['data-actualsrc']
+            new_img = soup.new_tag('img', src=PROTOCOL + img['data-original'])
+        elif mode == 'post':
+            #原图的话就不需要replace
+            new_img = soup.new_tag('img', src=PIC_PROTOCOL + img['src'].replace('.jpg','_b.jpg'))
         img.replace_with(new_img)
         if img.next_sibling is None:
             new_img.insert_after(soup.new_tag('br'))
@@ -169,6 +152,38 @@ def answer_content_process(content_list):
     for useless in useless_list:
         useless.extract()
     return soup.prettify()
+
+# def all_answer_content_process(content_list):
+#     soup = BeautifulSoup(
+#         '<html><head></head><body></body></html>')
+#
+#     for title, content in content_list.items():
+#         content = clone_bs4_elem(content)
+#         del content['class']
+#         b_tag = soup.new_tag("b")
+#         b_tag.string = title
+#         br_tag = soup.new_tag("br")
+#         soup.body.append(b_tag)
+#         soup.body.append(content)
+#         soup.body.append(br_tag)
+#
+#     #TODO:处理图片但是一些引用和邮箱还没处理
+#     no_script_list = soup.find_all("noscript")
+#     for no_script in no_script_list:
+#         no_script.extract()
+#     img_list = soup.find_all(
+#         "img", class_=["origin_image", "content_image"])
+#     for img in img_list:
+#         if "content_image" in img['class']:
+#             img['data-original'] = img['data-actualsrc']
+#         new_img = soup.new_tag('img', src=PROTOCOL + img['data-original'])
+#         img.replace_with(new_img)
+#         if img.next_sibling is None:
+#             new_img.insert_after(soup.new_tag('br'))
+#     useless_list = soup.find_all("i", class_="icon-external")
+#     for useless in useless_list:
+#         useless.extract()
+#     return soup.prettify()
 
 class BaseZhihu:
     def _gen_soup(self, content):
@@ -205,7 +220,7 @@ class Answers(BaseZhihu):
         """
         super()._make_soup()
         zm_content = self.soup.find('div',class_ = 'zm-item-answer')
-        #print(datetime.fromtimestamp(int(zm_content['data-created'])))#TODO:有的链接没有这个参数
+        #print(datetime.fromtimestamp(int(zm_content['data-created'])))#TODO:有的页面没这个参数
         html_content = zm_content.find('div', 'zm-editable-content clearfix')
         return  html_content
 
@@ -255,7 +270,7 @@ class Author(BaseZhihu):
 
 
 
-    def get_answers(self,mode = 1):
+    def save_answers(self,mode = 1):
         """
         两种答案的排序方式
         按时间：https://www.zhihu.com/people/douzishushu/answers?order_by=created&page=1
@@ -283,15 +298,17 @@ class Author(BaseZhihu):
                 else:
                     answer_votecount = answer_votecount_tag['data-votecount']
                 print(answer_title +' '+answer_href +' '+ str(answer_votecount))
-                if update_url_filter(answer_href,x):#随便填点东西
+                if update_url_filter(answer_href,x):#filter url-votenumber
                     real_answer =Answers(ZH_url+answer_href, answer_href, answer_title, answer_votecount)
                     html_content = real_answer.get_content()
-                    all_content[answer_title] = html_content
-                    time.sleep(30)
+                    # all_content[answer_title] = html_content
+                    html = content_process(html_content, 'answer')
+                    time.sleep(20)
+                    save_to_file(SAVE_PATH+'//'+process_symbol(answer_title),'html',html)
             #time.sleep(20)
         save_url_filter()
 
-    def get_posts(self):
+    def save_posts(self):
         """
         获取专栏
         """
@@ -316,7 +333,7 @@ class Author(BaseZhihu):
                 # p_name = post['author']['name']
                 # p_url = 'http://zhuanlan.zhihu.com'+ post['url']
                 #TODO:这里会丢弃一些格式，特别是数学公式
-                p_cont = post_content_process(BeautifulSoup(post['content']))
+                p_cont = content_process(BeautifulSoup(post['content']), 'post')
                 filename = SAVE_PATH + p_title
                 save_to_file(filename, 'html', p_cont)
 
@@ -369,20 +386,24 @@ def log_in():
 Gobal_Session = None
 
 if __name__ == '__main__':
+    global SAVE_PATH
     sys.setrecursionlimit(1000000) #解决递归深度问题，默认为999，设置为100w
     Gobal_Session = log_in()
     load_url_filter()
 
-    #url='https://www.zhihu.com/people/samuel-kong'
     #url = 'https://www.zhihu.com/people/douzishushu'
-    url='https://www.zhihu.com/people/he-ming-ke'
+    url='https://www.zhihu.com/people/madaye'
     #url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
 
     author = Author(url)
     author.get_info()
-    author.get_posts()
-    author.get_answers()
-    html = answer_content_process(all_content)
+    today = datetime.date.today()
+    SAVE_PATH = SAVE_PATH+(author._name).replace(' ','')+ '//'+str(today)
+    if os.path.exists(SAVE_PATH) is not True:
+        os.makedirs(SAVE_PATH)
+
+    # author.save_posts()
+    author.save_answers()
 
     print('finish!')
 
