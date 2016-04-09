@@ -380,30 +380,35 @@ def log_in():
     return _session
 
 
+def save_content(answers_url):
+    global SAVE_PATH
+    for url in answers_url:
+        author = Author(url)
+        author.get_info()
+        today = datetime.date.today()
+        save_path = SAVE_PATH+(author._name).replace(' ','')+ '//'+str(today)
+        if os.path.exists(save_path) is not True:
+            os.makedirs(save_path)
+        # author.save_posts()
+        author.save_answers()
+
 """
 
 """
 Gobal_Session = None
 
 if __name__ == '__main__':
-    global SAVE_PATH
+
     sys.setrecursionlimit(1000000) #解决递归深度问题，默认为999，设置为100w
     Gobal_Session = log_in()
     load_url_filter()
+    answers_url=[]
+    answers_url.append('https://www.zhihu.com/people/samuel-kong')
+    answers_url.append('https://www.zhihu.com/people/wu-mu-gui')
 
-    #url = 'https://www.zhihu.com/people/douzishushu'
-    url='https://www.zhihu.com/people/madaye'
-    #url = 'https://www.zhihu.com/people/SONG-OF-SIREN'
+    post_url=[]
 
-    author = Author(url)
-    author.get_info()
-    today = datetime.date.today()
-    SAVE_PATH = SAVE_PATH+(author._name).replace(' ','')+ '//'+str(today)
-    if os.path.exists(SAVE_PATH) is not True:
-        os.makedirs(SAVE_PATH)
-
-    # author.save_posts()
-    author.save_answers()
+    save_content(answers_url)
 
     print('finish!')
 
